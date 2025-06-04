@@ -1,0 +1,22 @@
+[package]
+name = "factorio-calculator"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+color-eyre = "0.6.3"
+crossterm = "0.29.0"
+good_lp = { version = "*", features = ["microlp"], default-features = false }
+json = "0.12.4"
+native-dialog = "0.9.0"
+ratatui = { version = "0.29.0", features = ["all-widgets"] }
+
+[profile.release]
+opt-level = "z"  # or "s" for size
+lto = true       # Link Time Optimization
+codegen-units = 1
+strip = "debuginfo"  # Enabled by default in 2025 :cite[3]
+panic = "abort"      # Removes unwind tables
+
+[features]
+debug_model = []
