@@ -99,7 +99,7 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}  # Fixed: Uses tag name directly
-          body_file: release_body.md    # Fixed: Uses generated file
+          body_path: release_body.md    # Fixed: Uses generated file
           files: |
             artifacts/**/*
         env:
