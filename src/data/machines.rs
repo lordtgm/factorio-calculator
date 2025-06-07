@@ -1,9 +1,8 @@
-use serde::{Deserialize, Serialize};
 use crate::data::effects::{EffectReceiver, Effects};
 use crate::data::materials::Material;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum EnergySource {
     Electric {
         drain: u32,
@@ -19,12 +18,10 @@ pub enum EnergySource {
         fluid_usage_per_tick: u32,
         scale_fluid_usage: bool,
     },
-    Void
+    Void,
 }
 
-
-#[derive(Clone)]
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct MiningDrillPrototype {
     pub name: String,
     pub energy_usage: u32,
@@ -38,8 +35,7 @@ pub struct MiningDrillPrototype {
     pub resource_drain_rate_percent: u8,
 }
 
-#[derive(Debug, Clone)]
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CraftingMachinePrototype {
     pub name: String,
     pub energy_usage: u32,
@@ -52,8 +48,7 @@ pub struct CraftingMachinePrototype {
     pub module_slots: u16,
 }
 
-#[derive(Clone)]
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct RecipePrototype {
     pub name: String,
     pub category: String,
@@ -63,15 +58,13 @@ pub struct RecipePrototype {
     pub allowed_effects: Vec<String>,
 }
 
-#[derive(Clone)]
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ModulePrototype {
     pub name: String,
     pub category: String,
     pub effects: Effects,
 }
-#[derive(Debug, Clone)]
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BeaconPrototype {
     pub name: String,
     pub energy_source: EnergySource,
@@ -81,4 +74,6 @@ pub struct BeaconPrototype {
     pub module_slots: u16,
     pub allowed_effects: Vec<String>,
     pub allowed_module_categories: Vec<String>,
+    pub profile: Option<Vec<f64>>,
+    pub beacon_counter: Option<String>,
 }

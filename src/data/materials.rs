@@ -1,26 +1,25 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, PartialEq, Debug)]
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum Material {
     Item(Item),
     Fluid(Fluid),
 }
 
-#[derive(PartialEq, Eq, Hash, Clone, Debug)]
-#[derive(Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Hash, Clone, Debug, Serialize, Deserialize)]
 pub enum MaterialPrototype {
     Item(String),
     Fluid(String),
 }
 
 impl MaterialPrototype {
-    pub fn get_name(&self) -> String {
-        match self {
-            MaterialPrototype::Item(item) => item,
-            MaterialPrototype::Fluid(fluid) => fluid,
-        }.clone()
-    }
+    // pub fn get_name(&self) -> String {
+    //     match self {
+    //         MaterialPrototype::Item(item) => item,
+    //         MaterialPrototype::Fluid(fluid) => fluid,
+    //     }
+    //     .clone()
+    // }
 
     pub fn to_id(&self) -> String {
         match self {
@@ -36,7 +35,6 @@ impl MaterialPrototype {
             _ => Err(format!("Invalid material type '{}'", id)),
         }
     }
-
 }
 
 impl Material {
@@ -74,8 +72,7 @@ impl Material {
     }
 }
 
-#[derive(Clone)]
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ItemPrototype {
     pub name: String,
     pub stack_size: u32,
@@ -86,8 +83,7 @@ pub struct ItemPrototype {
     pub plant_result: Option<String>,
 }
 
-#[derive(Clone, PartialEq, Debug)]
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct Item {
     pub name: String,
     pub quality: Option<u8>,
@@ -99,14 +95,12 @@ pub struct Item {
     pub extra_count_fraction: Option<f32>,
 }
 
-#[derive(Clone)]
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct FluidPrototype {
     pub name: String,
     pub fuel_value: Option<u32>,
 }
-#[derive(Clone, PartialEq, Debug)]
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct Fluid {
     pub name: String,
     pub temperature: Option<f32>,

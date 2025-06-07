@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Debug)]
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Effects {
     pub consumption: Option<f32>,
     pub speed: Option<f32>,
@@ -9,8 +8,7 @@ pub struct Effects {
     pub quality: Option<f32>,
 }
 
-#[derive(Clone, Copy, Debug)]
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct EffectReceiver {
     pub base_effect: Option<Effects>,
     pub uses_module_effects: bool,

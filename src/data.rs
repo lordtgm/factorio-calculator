@@ -1,11 +1,14 @@
-use crate::data::machines::{BeaconPrototype, CraftingMachinePrototype, MiningDrillPrototype, ModulePrototype, RecipePrototype};
+use crate::data::machines::{
+    BeaconPrototype, CraftingMachinePrototype, MiningDrillPrototype, ModulePrototype,
+    RecipePrototype,
+};
 use crate::data::materials::{FluidPrototype, Item, ItemPrototype, Material};
 use crate::data::resources::{PlantPrototype, ResourcePrototype};
 use lazy_static::lazy_static;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::sync::{Arc, RwLock};
-use serde::{Deserialize, Serialize};
 
 pub mod data_loader;
 pub mod effects;
@@ -26,9 +29,7 @@ pub fn set_registry(registry: Registry) {
     REGISTRY.write().unwrap().replace(Arc::new(registry));
 }
 
-
-#[derive(Default, Clone)]
-#[derive(Serialize, Deserialize)]
+#[derive(Default, Clone, Serialize, Deserialize)]
 pub struct Registry {
     pub items: HashMap<String, ItemPrototype>,
     pub fluids: HashMap<String, FluidPrototype>,
@@ -42,8 +43,7 @@ pub struct Registry {
     // pub processes: Vec<Process>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ProcessType {
     Resource,
     Plant,
@@ -73,8 +73,7 @@ impl TryFrom<&String> for ProcessType {
     }
 }
 
-#[derive(Clone, Debug)]
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Process {
     pub process_type: ProcessType,
     pub name: String,
@@ -159,5 +158,4 @@ impl Process {
                 .clone(),
         }
     }
-
 }

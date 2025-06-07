@@ -12,6 +12,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::path::PathBuf;
 use std::{fs, iter, panic};
+use tap::Tap;
 
 #[derive(Serialize, Deserialize)]
 struct SaveData {
@@ -138,6 +139,7 @@ impl App {
                 "Inputs".into(),
                 // "Auto Inputs".into(),
                 "Solve Model".into(),
+                "Solve Model - Generate inputs".into(),
                 "Save Project".into(),
             ],
             handle_click: |app: &mut App, name: String| match name.as_str() {
@@ -158,7 +160,10 @@ impl App {
                     app.menu_stack.push((menu, 0));
                 }
                 "Solve Model" => {
-                    app.solve_model();
+                    app.solve_model(false);
+                }
+                "Solve Model - Generate inputs" => {
+                    app.solve_model(true);
                 }
                 "Save Project" => {
                     app.save_project(true);
@@ -180,8 +185,14 @@ impl App {
                             .resources
                             .keys()
                             .cloned()
-                            .filter(|name| self.get_process_from_name(name).is_none())
-                            .collect(),
+                            .filter(|name| {
+                                self.get_process_from_name(
+                                    &(Into::<String>::into(&ProcessType::Resource) + " :" + name),
+                                )
+                                .is_none()
+                            })
+                            .collect::<Vec<String>>()
+                            .tap_mut(|vec| vec.sort()),
                         handle_click: |app: &mut App, name: String| {
                             app.model.processes.push(Process {
                                 process_type: ProcessType::Resource,
@@ -209,8 +220,14 @@ impl App {
                             .plants
                             .keys()
                             .cloned()
-                            .filter(|name| self.get_process_from_name(name).is_none())
-                            .collect(),
+                            .filter(|name| {
+                                self.get_process_from_name(
+                                    &(Into::<String>::into(&ProcessType::Plant) + " :" + name),
+                                )
+                                .is_none()
+                            })
+                            .collect::<Vec<String>>()
+                            .tap_mut(|vec| vec.sort()),
                         handle_click: |app: &mut App, name: String| {
                             app.model.processes.push(Process {
                                 process_type: ProcessType::Plant,
@@ -230,8 +247,14 @@ impl App {
                             .recipes
                             .keys()
                             .cloned()
-                            .filter(|name| self.get_process_from_name(name).is_none())
-                            .collect(),
+                            .filter(|name| {
+                                self.get_process_from_name(
+                                    &(Into::<String>::into(&ProcessType::Recipe) + " :" + name),
+                                )
+                                .is_none()
+                            })
+                            .collect::<Vec<String>>()
+                            .tap_mut(|vec| vec.sort()),
                         handle_click: |app: &mut App, name: String| {
                             app.model.processes.push(Process {
                                 process_type: ProcessType::Recipe,
@@ -257,7 +280,7 @@ impl App {
             }
             None => Menu {
                 title: "Add Process".into(),
-                items: vec!["Resource".into(), "Plant".into(), "Recipe".into()],
+                items: vec!["Recipe".into(), "Resource".into(), "Plant".into()],
                 handle_click: |app: &mut App, name: String| {
                     let menu = app.get_new_process_menu(Some(match name.as_str() {
                         "Resource" => ProcessType::Resource,
@@ -1004,8 +1027,13 @@ impl App {
 
     fn get_effect_receiver(
         process_data: &ProcessData,
-    ) -> (EffectReceiver, &Vec<String>, &HashMap<String, Beacon>) {
-        let (effect_receiver, modules, beacons) = match process_data {
+    ) -> (
+        EffectReceiver,
+        Vec<String>,
+        &Vec<String>,
+        &HashMap<String, Beacon>,
+    ) {
+        match process_data {
             ProcessData::Resource {
                 mining_drill,
                 modules,
@@ -1017,6 +1045,12 @@ impl App {
                     .unwrap()
                     .effect_receiver
                     .unwrap_or_default(),
+                get_registry()
+                    .mining_drills
+                    .get(mining_drill.as_ref().unwrap())
+                    .unwrap()
+                    .allowed_effects
+                    .clone(),
                 modules,
                 beacons,
             ),
@@ -1031,23 +1065,61 @@ impl App {
                     .unwrap()
                     .effect_receiver
                     .unwrap_or_default(),
+                get_registry()
+                    .crafting_machines
+                    .get(crafting_machine.as_ref().unwrap())
+                    .unwrap()
+                    .allowed_effects
+                    .clone(),
                 modules,
                 beacons,
             ),
-        };
-        (effect_receiver, modules, beacons)
+        }
     }
 
-    fn solve_model(&mut self) {
+    //noinspection DuplicatedCode
+    fn solve_model(&mut self, generate_inputs: bool) {
         let registry = get_registry();
+        // validate the project state
+        let invalid_processes: Vec<String> = self.model.processes.iter().filter_map(|process| {
+            if match self
+                .process_data
+                .get(&(process.process_type, process.name.clone()))
+                .unwrap()
+            {
+                ProcessData::Resource {
+                    mining_drill,
+                    modules: _modules,
+                    beacons: _beacons,
+                } => mining_drill,
+                ProcessData::Recipe {
+                    crafting_machine,
+                    modules: _modules,
+                    beacons: _beacons,
+                } => crafting_machine,
+            }
+            .is_none()
+            {
+                Some(process.name.clone())
+            } else {
+                None
+            }
+        }).collect();
+        if !invalid_processes.is_empty() {
+            self.set_message("Some processes don't have a machine!\n".to_owned() + &*invalid_processes.join(", "));
+            return;
+        }
         // update productivity values
         for process in self.model.processes.iter_mut() {
             let mut productivity = 0.0;
-            let (effect_receiver, modules, beacons) = App::get_effect_receiver(
+            let (effect_receiver, allowed_effects, modules, beacons) = App::get_effect_receiver(
                 self.process_data
                     .get(&(process.process_type, process.name.clone()))
                     .unwrap(),
             );
+            if !allowed_effects.contains(&"productivity".into()) {
+                continue;
+            }
             if let Some(base_effect) = effect_receiver.base_effect {
                 productivity += base_effect.productivity.unwrap_or(0.0);
             }
@@ -1064,6 +1136,7 @@ impl App {
             }
             if effect_receiver.uses_beacon_effects {
                 for beacon in beacons.values() {
+                    let prototype = registry.beacons.get(&beacon.prototype).unwrap();
                     for module in beacon.modules.iter() {
                         productivity += registry
                             .modules
@@ -1071,7 +1144,18 @@ impl App {
                             .unwrap()
                             .effects
                             .productivity
-                            .unwrap_or(0.0);
+                            .unwrap_or(0.0)
+                            * (prototype.efficiency as f32)
+                            * prototype.profile.as_ref().map_or(1.0, |profile| {
+                                *profile
+                                    .get(if prototype.beacon_counter == Some("same_type".into()) {
+                                        beacon.count as usize
+                                    } else {
+                                        beacons.len()
+                                    })
+                                    .unwrap_or(profile.last().unwrap_or(&1.0))
+                                    as f32
+                            });
                     }
                 }
             }
@@ -1080,8 +1164,11 @@ impl App {
             // }
             process.productivity = productivity;
         }
-        let message: String = match self.model.solve(false) {
+        let message: String = match self.model.solve(generate_inputs) {
             ModelResult::NoSolution => "No Solution!".into(),
+            ModelResult::Unbounded => "There's no limit on how much product can be made!\
+            Try \"Solve Model - Generate inputs\""
+                .into(),
             ModelResult::OneSolution(solution) => {
                 let registry = get_registry().clone();
                 vec!["Solution:".to_string()]
@@ -1148,11 +1235,16 @@ impl App {
                             }
                         }
                         .map_or(0.0, |mut speed| {
-                            let (effect_receiver, modules, beacons) = App::get_effect_receiver(
-                                self.process_data
-                                    .get(&(process.process_type, process.name.clone()))
-                                    .unwrap(),
-                            );
+                            let (effect_receiver, allowed_effects, modules, beacons) =
+                                App::get_effect_receiver(
+                                    self.process_data
+                                        .get(&(process.process_type, process.name.clone()))
+                                        .unwrap(),
+                                );
+
+                            if !allowed_effects.contains(&"speed".into()) {
+                                return speed;
+                            }
                             if let Some(base_effect) = effect_receiver.base_effect {
                                 speed += base_effect.speed.unwrap_or(0.0) as f64;
                             }
@@ -1170,6 +1262,8 @@ impl App {
                             }
                             if effect_receiver.uses_beacon_effects {
                                 for beacon in beacons.values() {
+                                    let prototype =
+                                        registry.beacons.get(&beacon.prototype).unwrap();
                                     for module in beacon.modules.iter() {
                                         speed += registry
                                             .modules
@@ -1179,6 +1273,20 @@ impl App {
                                             .speed
                                             .unwrap_or(0.0)
                                             as f64
+                                            * (prototype.efficiency)
+                                            * prototype.profile.as_ref().map_or(1.0, |profile| {
+                                                *profile
+                                                    .get(
+                                                        if prototype.beacon_counter
+                                                            == Some("same_type".into())
+                                                        {
+                                                            beacon.count as usize
+                                                        } else {
+                                                            beacons.len()
+                                                        },
+                                                    )
+                                                    .unwrap_or(profile.last().unwrap_or(&1.0))
+                                            });
                                     }
                                 }
                             }
@@ -1271,7 +1379,6 @@ impl App {
             }
         }
     }
-
     fn set_message<S: Into<String>>(&mut self, message: S) {
         self.message = Some(message.into());
         self.message_scroll = 0;
@@ -1314,8 +1421,14 @@ impl App {
                             if self.search_query.is_some() || self.number_input.is_some() {
                                 self.search_query = None;
                                 self.number_input = None;
+                            } else if self.message.is_some() {
+                                self.message = None;
                             } else {
                                 self.menu_stack.pop();
+                                if self.menu_stack.is_empty() {
+                                    self.should_quit = true;
+                                    return Ok(())
+                                }
                             }
                         }
                         KeyCode::Up | KeyCode::Char('w') => {
@@ -1324,8 +1437,6 @@ impl App {
                                 if selected > 0 {
                                     self.set_selected(selected - 1)
                                 }
-                            } else {
-                                self.message_scroll = self.message_scroll.saturating_sub(1);
                             }
                         }
                         KeyCode::Down | KeyCode::Char('s') => {
@@ -1336,8 +1447,6 @@ impl App {
                                 if items.len() > 0 && selected < items.len() - 1 {
                                     self.set_selected(selected + 1)
                                 }
-                            } else {
-                                self.message_scroll = self.message_scroll.saturating_add(1);
                             }
                         }
                         KeyCode::Enter | KeyCode::Char(' ') => {
@@ -1408,10 +1517,9 @@ impl App {
                     if *pos >= length {
                         *pos = length - 1
                     }
-                    return Ok(());
                 }
 
-                if let Some(_) = &self.message {
+                if let Some(_) = &self.message && key.kind == KeyEventKind::Press {
                     match key.code {
                         KeyCode::Up | KeyCode::Down | KeyCode::PageUp | KeyCode::PageDown => {
                             // Start tracking key press
@@ -1482,7 +1590,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     let mut app = App::new();
 
     while !app.should_quit {
-        terminal.draw(|f| ui(f, &app))?;
+        terminal.draw(|f| ui(f, &mut app))?;
         app.handle_input()?;
     }
 
@@ -1515,7 +1623,7 @@ fn get_displayed_list<'a>(current_menu: &'a Menu, app: &App) -> Vec<&'a String> 
     }
 }
 
-fn ui(frame: &mut Frame, app: &App) {
+fn ui(frame: &mut Frame, app: &mut App) {
     let (current_menu, selected_index) = app.menu_stack.last().unwrap();
 
     // Filter items based on search query
@@ -1582,9 +1690,10 @@ fn ui(frame: &mut Frame, app: &App) {
         let lines: Vec<String> = message.lines().map(|s| s.to_string()).collect();
 
         // Calculate display parameters
-        let max_height = 20;
+        let max_height = 5;
         let height = max_height.min(lines.len());
         let scroll = app.message_scroll.min(lines.len().saturating_sub(height));
+        app.message_scroll = scroll;
 
         // Create layout
         let vertical_chunks = Layout::default()
@@ -1633,7 +1742,7 @@ fn ui(frame: &mut Frame, app: &App) {
 
         // Add scroll indicator if needed
         if lines.len() > height {
-            let scroll_text = format!("{}/{}", scroll + 1, lines.len());
+            let scroll_text = format!("{}/{}", scroll + 1, lines.len()-max_height+1);
             let indicator = Paragraph::new(scroll_text)
                 .alignment(Alignment::Right)
                 .style(Style::default().fg(Color::DarkGray));

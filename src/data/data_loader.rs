@@ -12,7 +12,7 @@ use std::fs;
 use std::string::String;
 
 pub fn load_data(dump: String) -> Result<Registry, Error> {
-    let mut registry: Registry=Registry::default();
+    let mut registry: Registry = Registry::default();
 
     let data: String = fs::read_to_string(dump).unwrap();
 
@@ -75,6 +75,31 @@ pub fn load_data(dump: String) -> Result<Registry, Error> {
         // registry.processes.push(process);
     }
 
+    for (_name, value) in parsed["tile"].entries() {
+        if value["fluid"].is_string() {
+            registry.resources.insert(
+                value["fluid"].as_str().unwrap().to_string() + " *tile",
+                ResourcePrototype {
+                    name: value["name"].as_str().unwrap().into(),
+                    category: "calculator internal tile".into(),
+                    results: Minable {
+                        mining_time: 1.0,
+                        results: vec![Material::Fluid(Fluid {
+                            name: value["fluid"].as_str().unwrap().into(),
+                            temperature: None,
+                            amount: Some(1.0),
+                            amount_min: None,
+                            amount_max: None,
+                            probability: None,
+                            ignored_by_productivity: None,
+                        })],
+                        input_fluid: None,
+                    },
+                },
+            );
+        }
+    }
+
     for (name, value) in parsed["plant"].entries() {
         registry.plants.insert(
             name.into(),
@@ -114,10 +139,7 @@ pub fn load_data(dump: String) -> Result<Registry, Error> {
     }
 
     for (plant_name, seeds) in plant_seeds {
-        let plant = registry
-            .plants
-            .remove(&plant_name)
-            .unwrap();
+        let plant = registry.plants.remove(&plant_name).unwrap();
         registry.plants.insert(
             plant_name.clone(),
             PlantPrototype {
@@ -159,34 +181,53 @@ pub fn load_data(dump: String) -> Result<Registry, Error> {
         );
     }
 
-    for (name, value) in parsed["assembling-machine"].entries().chain(
-        parsed["furnace"].entries()
-    ) {
-        registry
-            .crafting_machines
-            .insert(
-                name.into(),
-                CraftingMachinePrototype {
-                    name: value["name"].as_str().unwrap().into(),
-                    energy_usage: get_energy(value["energy_usage"].as_str().unwrap().into()),
-                    crafting_speed: value["crafting_speed"].as_f64().unwrap(),
-                    crafting_categories: value["crafting_categories"]
-                        .members()
-                        .map(|string| string.as_str().unwrap().into())
-                        .collect(),
-                    energy_source: get_energy_source(&value["energy_source"]),
-                    effect_receiver: get_effect_receiver(&value["effect_receiver"]),
-                    allowed_effects: value["allowed_effects"]
-                        .members()
-                        .map(|string| string.as_str().unwrap().into())
-                        .collect(),
-                    allowed_module_categories: value["allowed_module_categories"]
-                        .members()
-                        .map(|string| string.as_str().unwrap().into())
-                        .collect(),
-                    module_slots: value["module_slots"].as_u16().or(Some(0)).unwrap(),
-                },
-            );
+    for (name, value) in parsed["offshore-pump"].entries() {
+        registry.mining_drills.insert(
+            name.into(),
+            MiningDrillPrototype {
+                name: value["name"].as_str().unwrap().into(),
+                energy_usage: get_energy(value["energy_usage"].as_str().unwrap().into()),
+                mining_speed: value["pumping_speed"].as_f64().unwrap(),
+                energy_source: get_energy_source(&value["energy_source"]),
+                resource_categories: vec![
+                    "calculator internal tile".into(),
+                ],
+                effect_receiver: None,
+                allowed_effects: vec![],
+                allowed_module_categories: vec!["".into()],
+                module_slots: 0,
+                resource_drain_rate_percent: 0,
+            }
+        );
+    }
+
+    for (name, value) in parsed["assembling-machine"]
+        .entries()
+        .chain(parsed["furnace"].entries())
+    {
+        registry.crafting_machines.insert(
+            name.into(),
+            CraftingMachinePrototype {
+                name: value["name"].as_str().unwrap().into(),
+                energy_usage: get_energy(value["energy_usage"].as_str().unwrap().into()),
+                crafting_speed: value["crafting_speed"].as_f64().unwrap(),
+                crafting_categories: value["crafting_categories"]
+                    .members()
+                    .map(|string| string.as_str().unwrap().into())
+                    .collect(),
+                energy_source: get_energy_source(&value["energy_source"]),
+                effect_receiver: get_effect_receiver(&value["effect_receiver"]),
+                allowed_effects: value["allowed_effects"]
+                    .members()
+                    .map(|string| string.as_str().unwrap().into())
+                    .collect(),
+                allowed_module_categories: value["allowed_module_categories"]
+                    .members()
+                    .map(|string| string.as_str().unwrap().into())
+                    .collect(),
+                module_slots: value["module_slots"].as_u16().or(Some(0)).unwrap(),
+            },
+        );
     }
 
     for (name, value) in parsed["recipe"].entries() {
@@ -267,6 +308,17 @@ pub fn load_data(dump: String) -> Result<Registry, Error> {
                     .members()
                     .map(|string| string.as_str().unwrap().into())
                     .collect(),
+                profile: if value["profile"].is_array() {
+                    Some(
+                        value["profile"]
+                            .members()
+                            .map(|value| value.as_f64().unwrap())
+                            .collect(),
+                    )
+                } else {
+                    None
+                },
+                beacon_counter: value["beacon_counter"].as_str().map(|string| string.into()),
             },
         );
     }

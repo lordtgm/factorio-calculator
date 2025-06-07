@@ -2,14 +2,13 @@ use crate::data::materials::MaterialPrototype;
 use crate::data::Process;
 use good_lp::SolutionStatus::Optimal;
 use good_lp::{
-    microlp, variable, Constraint, Expression, IntoAffineExpression, ProblemVariables, Solution,
-    SolverModel, Variable,
+    microlp, variable, Constraint, Expression, IntoAffineExpression, ProblemVariables,
+    ResolutionError, Solution, SolverModel, Variable,
 };
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
-#[derive(Default, Clone)]
-#[derive(Serialize, Deserialize)]
+#[derive(Default, Clone, Serialize, Deserialize)]
 pub struct Model {
     pub processes: Vec<Process>,
     pub inputs: HashMap<MaterialPrototype, f64>,
@@ -24,6 +23,7 @@ pub enum ModelResult {
         lower_bounds: HashMap<MaterialPrototype, f64>,
         higher_bounds: HashMap<MaterialPrototype, f64>,
     },
+    Unbounded,
 }
 
 impl Model {
@@ -189,21 +189,43 @@ impl Model {
         let mut output_optimums: HashMap<MaterialPrototype, f64> = HashMap::new();
 
         for (material, variable) in input_variables.iter() {
-            let (min, max) = solve_for(&variables, &constraints, variable, !generate_inputs);
+            let (min, max_opt) = match solve_for(&variables, &constraints, variable, !generate_inputs) {
+                Ok(result) => result,
+                Err(err) => {
+                    return match err {
+                        ResolutionError::Unbounded => ModelResult::Unbounded,
+                        ResolutionError::Infeasible => ModelResult::NoSolution,
+                        _ => panic!(),
+                    }
+                }
+            };
             if generate_inputs {
                 self.inputs.insert(material.clone(), min);
             }
-            if (max - min).abs() > 1e-6 {
-                multiple_solutions = true;
-                input_optimums.insert(material.clone(), min);
+            if let Some(max) = max_opt {
+                if (max - min).abs() > 1e-6 {
+                    multiple_solutions = true;
+                    input_optimums.insert(material.clone(), min);
+                }
             }
         }
 
         for (material, variable) in output_variables.iter() {
-            let (min, max) = solve_for(&variables, &constraints, variable, !generate_inputs);
-            if (max - min).abs() > 1e-6 {
-                multiple_solutions = true;
-                output_optimums.insert(material.clone(), max);
+            let (min, max_opt) = match solve_for(&variables, &constraints, variable, !generate_inputs) {
+                Ok(result) => result,
+                Err(err) => {
+                    return match err {
+                        ResolutionError::Unbounded => ModelResult::Unbounded,
+                        ResolutionError::Infeasible => ModelResult::NoSolution,
+                        _ => panic!(),
+                    }
+                }
+            };
+            if let Some(max) = max_opt {
+                if (max - min).abs() > 1e-6 {
+                    multiple_solutions = true;
+                    output_optimums.insert(material.clone(), max);
+                }
             }
         }
 
@@ -238,26 +260,29 @@ fn solve_for(
     constraints: &Vec<Box<dyn Fn() -> Constraint>>,
     variable: &Variable,
     maximize: bool,
-) -> (f64, f64) {
+) -> Result<(f64, Option<f64>), ResolutionError> {
     let min = copy_variables(&variables)
         .minimise(variable)
         .using(microlp)
         .with_all(constraints.iter().map(|function| function()))
-        .solve()
-        .unwrap()
+        .solve()?
         .value(*variable);
-    let max = if maximize {
-        copy_variables(&variables)
-            .maximise(variable)
-            .using(microlp)
-            .with_all(constraints.iter().map(|function| function()))
-            .solve()
-            .unwrap()
-            .value(*variable)
-    } else {
-        min
-    };
-    (min, max)
+    let max = copy_variables(&variables)
+        .maximise(variable)
+        .using(microlp)
+        .with_all(constraints.iter().map(|function| function()))
+        .solve()
+        .and_then(|result| Ok(Some(result.value(*variable))))
+        .or_else(|error| {
+            if let ResolutionError::Unbounded = error
+                && !maximize
+            {
+                return Ok(None);
+            } else {
+                Err(error)
+            }
+        })?;
+    Ok((min, max))
 }
 
 #[cfg(test)]
