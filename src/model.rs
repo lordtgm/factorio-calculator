@@ -6,8 +6,10 @@ use good_lp::{
     SolverModel, Variable,
 };
 use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
 
-#[derive(Default)]
+#[derive(Default, Clone)]
+#[derive(Serialize, Deserialize)]
 pub struct Model {
     pub processes: Vec<Process>,
     pub inputs: HashMap<MaterialPrototype, f64>,

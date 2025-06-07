@@ -1,22 +1,32 @@
 use crate::data::data_loader::load_data;
 use crate::data::effects::EffectReceiver;
 use crate::data::materials::MaterialPrototype;
-use crate::data::{Process, ProcessType, Registry};
+use crate::data::{get_registry, set_registry, Process, ProcessType, Registry};
 use crate::model::{Model, ModelResult};
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use native_dialog::DialogBuilder;
+use ratatui::crossterm::event::KeyModifiers;
+use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{prelude::*, widgets::*};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::error::Error;
-use std::rc::Rc;
-use std::{iter, panic};
+use std::path::PathBuf;
+use std::{fs, iter, panic};
 
+#[derive(Serialize, Deserialize)]
+struct SaveData {
+    registry: Registry,
+    model: Model,
+    process_data: HashMap<(ProcessType, String), ProcessData>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
 struct Beacon {
     prototype: String,
     count: u16,
     modules: Vec<String>,
 }
-
+#[derive(Clone, Serialize, Deserialize)]
 enum ProcessData {
     Resource {
         mining_drill: Option<String>,
@@ -41,10 +51,10 @@ struct App {
     menu_stack: Vec<(Menu, usize)>,
     message: Option<String>,
     should_quit: bool,
+    save_path: Option<PathBuf>,
     scroll_key: Option<KeyCode>,
     scroll_start_time: Option<std::time::Instant>,
     last_scroll_time: Option<std::time::Instant>,
-    registry: Option<Rc<Registry>>,
     model: Model,
     process_data: HashMap<(ProcessType, String), ProcessData>,
     selected_process: Option<String>,
@@ -60,7 +70,11 @@ impl App {
     fn new() -> Self {
         let main_menu = Menu {
             title: "Main Menu".to_string(),
-            items: vec!["Select data file".to_string(), "Exit".to_string()],
+            items: vec![
+                "Select data file".into(),
+                "Load Project".into(),
+                "Exit".into(),
+            ],
             handle_click: |app: &mut App, name: String| match name.as_str() {
                 "Select data file" => {
                     match DialogBuilder::file()
@@ -71,7 +85,7 @@ impl App {
                     {
                         Some(file) => match load_data(file.to_str().unwrap().to_string()) {
                             Ok(registry) => {
-                                app.registry = registry.into();
+                                set_registry(registry);
                                 app.set_message("Loaded data file.");
                                 let menu = app.get_project_menu();
                                 app.menu_stack.push((menu, 0));
@@ -85,6 +99,9 @@ impl App {
                         }
                     }
                 }
+                "Load Project" => {
+                    app.load_project();
+                }
                 "Exit" => {
                     app.should_quit = true;
                 }
@@ -96,7 +113,7 @@ impl App {
             menu_stack: vec![(main_menu, 0)],
             message: None,
             should_quit: false,
-            registry: None,
+            save_path: None,
             scroll_key: None,
             scroll_start_time: None,
             last_scroll_time: None,
@@ -121,6 +138,7 @@ impl App {
                 "Inputs".into(),
                 // "Auto Inputs".into(),
                 "Solve Model".into(),
+                "Save Project".into(),
             ],
             handle_click: |app: &mut App, name: String| match name.as_str() {
                 "Processes" => {
@@ -142,19 +160,19 @@ impl App {
                 "Solve Model" => {
                     app.solve_model();
                 }
+                "Save Project" => {
+                    app.save_project(true);
+                }
                 _ => panic!(),
             },
             update_menu: Some(|app: &mut App| app.get_project_menu()),
         }
     }
-    fn get_registry(&self) -> Rc<Registry> {
-        self.registry.clone().clone().unwrap()
-    }
     //noinspection DuplicatedCode
     fn get_new_process_menu(&mut self, process_type: Option<ProcessType>) -> Menu {
         match process_type {
             Some(process_type) => {
-                let registry = self.get_registry();
+                let registry = get_registry();
                 match process_type {
                     ProcessType::Resource => Menu {
                         title: "Add Resource".into(),
@@ -165,10 +183,8 @@ impl App {
                             .filter(|name| self.get_process_from_name(name).is_none())
                             .collect(),
                         handle_click: |app: &mut App, name: String| {
-                            let registry = app.get_registry();
                             app.model.processes.push(Process {
                                 process_type: ProcessType::Resource,
-                                registry: Rc::downgrade(&registry),
                                 name: name.clone(),
                                 productivity: 0.0,
                             });
@@ -196,10 +212,8 @@ impl App {
                             .filter(|name| self.get_process_from_name(name).is_none())
                             .collect(),
                         handle_click: |app: &mut App, name: String| {
-                            let registry = app.get_registry();
                             app.model.processes.push(Process {
                                 process_type: ProcessType::Plant,
-                                registry: Rc::downgrade(&registry),
                                 name,
                                 productivity: 0.0,
                             });
@@ -219,10 +233,8 @@ impl App {
                             .filter(|name| self.get_process_from_name(name).is_none())
                             .collect(),
                         handle_click: |app: &mut App, name: String| {
-                            let registry = app.get_registry();
                             app.model.processes.push(Process {
                                 process_type: ProcessType::Recipe,
-                                registry: Rc::downgrade(&registry),
                                 name: name.clone(),
                                 productivity: 0.0,
                             });
@@ -356,7 +368,7 @@ impl App {
         Menu {
             title: "Select Machine".into(),
             items: {
-                let registry = self.get_registry();
+                let registry = get_registry();
                 let process = self.get_selected_process();
                 match process.process_type {
                     ProcessType::Resource => registry
@@ -434,7 +446,7 @@ impl App {
         Menu {
             title: "Modules (select to remove)".into(),
             items: {
-                let registry = self.get_registry();
+                let registry = get_registry();
                 match self.selected_beacon.clone() {
                     Some(beacon_name) => {
                         let modules = &self.get_selected_beacon().modules;
@@ -539,7 +551,7 @@ impl App {
         Menu {
             title: "Add Module".into(),
             items: {
-                let registry = self.get_registry();
+                let registry = get_registry();
                 match self.selected_beacon.as_ref() {
                     Some(beacon_name) => registry
                         .modules
@@ -633,7 +645,7 @@ impl App {
             handle_click: |app: &mut App, name: String| {
                 let fill = app.fill_modules;
                 let max_modules: u16;
-                let registry = app.get_registry();
+                let registry = get_registry();
                 let modules = match app.selected_beacon.as_ref() {
                     Some(beacon_name) => {
                         max_modules = registry.beacons.get(beacon_name).unwrap().module_slots;
@@ -746,6 +758,7 @@ impl App {
                     app.number_input = Some(("beacon_count".into(), current_count));
                 }
                 "Remove" => {
+                    let beacon = app.get_selected_beacon().prototype.clone();
                     match app.get_selected_process_data() {
                         ProcessData::Resource {
                             mining_drill: _mining_drill,
@@ -758,7 +771,7 @@ impl App {
                             beacons,
                         } => beacons,
                     }
-                    .remove(&name);
+                    .remove(&beacon);
                     app.selected_beacon = None;
                     app.menu_stack.pop();
                 }
@@ -774,7 +787,7 @@ impl App {
         Menu {
             title: "Add Beacon".into(),
             items: {
-                let registry = self.get_registry();
+                let registry = get_registry();
                 registry
                     .beacons
                     .iter()
@@ -923,7 +936,7 @@ impl App {
         Menu {
             title: "New Output".into(),
             items: {
-                let registry = self.registry.as_ref().unwrap();
+                let registry = get_registry();
                 iter::empty()
                     .chain(
                         registry
@@ -958,7 +971,7 @@ impl App {
         Menu {
             title: "New Input".into(),
             items: {
-                let registry = self.registry.as_ref().unwrap();
+                let registry = get_registry();
                 iter::empty()
                     .chain(
                         registry
@@ -989,17 +1002,16 @@ impl App {
         }
     }
 
-    fn get_effect_receiver<'a>(
-        registry: &Rc<Registry>,
-        process_data: &'a ProcessData,
-    ) -> (EffectReceiver, &'a Vec<String>, &'a HashMap<String, Beacon>) {
+    fn get_effect_receiver(
+        process_data: &ProcessData,
+    ) -> (EffectReceiver, &Vec<String>, &HashMap<String, Beacon>) {
         let (effect_receiver, modules, beacons) = match process_data {
             ProcessData::Resource {
                 mining_drill,
                 modules,
                 beacons,
             } => (
-                registry
+                get_registry()
                     .mining_drills
                     .get(mining_drill.as_ref().unwrap())
                     .unwrap()
@@ -1013,7 +1025,7 @@ impl App {
                 modules,
                 beacons,
             } => (
-                registry
+                get_registry()
                     .crafting_machines
                     .get(crafting_machine.as_ref().unwrap())
                     .unwrap()
@@ -1027,12 +1039,11 @@ impl App {
     }
 
     fn solve_model(&mut self) {
-        let registry = self.registry.as_ref().unwrap();
+        let registry = get_registry();
         // update productivity values
         for process in self.model.processes.iter_mut() {
             let mut productivity = 0.0;
             let (effect_receiver, modules, beacons) = App::get_effect_receiver(
-                &registry,
                 self.process_data
                     .get(&(process.process_type, process.name.clone()))
                     .unwrap(),
@@ -1072,7 +1083,7 @@ impl App {
         let message: String = match self.model.solve(false) {
             ModelResult::NoSolution => "No Solution!".into(),
             ModelResult::OneSolution(solution) => {
-                let registry = self.registry.as_ref().unwrap().clone();
+                let registry = get_registry().clone();
                 vec!["Solution:".to_string()]
                     .into_iter()
                     .chain(solution.iter().map(|(process, &amount)| {
@@ -1138,7 +1149,6 @@ impl App {
                         }
                         .map_or(0.0, |mut speed| {
                             let (effect_receiver, modules, beacons) = App::get_effect_receiver(
-                                &registry,
                                 self.process_data
                                     .get(&(process.process_type, process.name.clone()))
                                     .unwrap(),
@@ -1195,12 +1205,79 @@ impl App {
         };
         self.set_message(message);
     }
+    fn save_project(&mut self, force_prompt: bool) {
+        let file = if !force_prompt && let Some(file) = self.save_path.clone() {
+            file
+        } else {
+            let Some(file) = DialogBuilder::file()
+                .add_filter("Project files", &["cfpr"])
+                .save_single_file()
+                .show()
+                .unwrap()
+            else {
+                self.set_message("No file selected");
+                return;
+            };
+            file
+        };
+        self.save_path = Some(file.clone());
+        let save_data = SaveData {
+            registry: (*get_registry()).clone(),
+            model: self.model.clone(),
+            process_data: self
+                .process_data
+                .iter()
+                .map(|((process_type, name), value)| {
+                    ((process_type.clone(), name.clone()), value.clone())
+                })
+                .collect(),
+        };
+        if let Err(e) = fs::write(file, rmp_serde::to_vec(&save_data).unwrap()) {
+            self.set_message(format!("Failed to save data! Error: {}", e));
+        } else {
+            self.set_message("Successfully saved project file");
+        }
+    }
+    fn load_project(&mut self) {
+        match DialogBuilder::file()
+            .add_filter("Project files", &["cfpr"])
+            .open_single_file()
+            .show()
+            .unwrap()
+        {
+            Some(file) => match fs::read(file) {
+                Ok(data) => match rmp_serde::from_slice::<SaveData>(&data) {
+                    Ok(SaveData {
+                        model,
+                        registry,
+                        process_data,
+                    }) => {
+                        set_registry(registry);
+                        self.model = model;
+                        self.process_data = process_data;
+                        let menu = self.get_project_menu();
+                        self.menu_stack.push((menu, 0));
+                    }
+                    Err(e) => {
+                        self.set_message(format!("Failed to load data! Error: {}", e));
+                    }
+                },
+                Err(e) => {
+                    self.set_message(format!("Failed to load data! Error: {}", e));
+                }
+            },
+            None => {
+                self.set_message("No file selected");
+            }
+        }
+    }
+
     fn set_message<S: Into<String>>(&mut self, message: S) {
         self.message = Some(message.into());
         self.message_scroll = 0;
     }
-    fn current_menu(&self) -> &Menu {
-        &self.menu_stack.last().unwrap().0
+    fn current_menu(&self) -> Option<&Menu> {
+        self.menu_stack.last().map(|(menu, _pos)| menu)
     }
     fn current_selected(&self) -> usize {
         self.menu_stack.last().unwrap().1
@@ -1221,6 +1298,9 @@ impl App {
                             if let Some((_context, ref mut input)) = self.number_input.as_mut() {
                                 input.push(c);
                             }
+                        }
+                        KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            self.save_project(false);
                         }
                         KeyCode::Backspace => {
                             if let Some((_context, ref mut input)) = self.number_input.as_mut() {
@@ -1251,7 +1331,7 @@ impl App {
                         KeyCode::Down | KeyCode::Char('s') => {
                             if self.message.is_none() {
                                 let selected = self.current_selected();
-                                let menu = self.current_menu();
+                                let menu = self.current_menu().unwrap();
                                 let items = get_displayed_list(menu, self);
                                 if items.len() > 0 && selected < items.len() - 1 {
                                     self.set_selected(selected + 1)
@@ -1309,14 +1389,18 @@ impl App {
                         }
                         _ => {}
                     }
-                    if let Some(update_menu) = self.current_menu().update_menu.clone() {
+                    let Some(current_menu) = self.current_menu() else {
+                        self.should_quit = true;
+                        return Ok(());
+                    };
+                    if let Some(update_menu) = current_menu.update_menu.clone() {
                         let Some((_, pos)) = self.menu_stack.pop() else {
                             panic!()
                         };
                         let new_menu = update_menu(self);
                         self.menu_stack.push((new_menu, pos));
                     }
-                    let mut length = get_displayed_list(self.current_menu(), self).len();
+                    let mut length = get_displayed_list(self.current_menu().unwrap(), self).len();
                     if length == 0 {
                         length = 1;
                     }

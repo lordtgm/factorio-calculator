@@ -1,10 +1,14 @@
+use serde::{Deserialize, Serialize};
+
 #[derive(Clone, PartialEq, Debug)]
+#[derive(Serialize, Deserialize)]
 pub enum Material {
     Item(Item),
     Fluid(Fluid),
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
+#[derive(Serialize, Deserialize)]
 pub enum MaterialPrototype {
     Item(String),
     Fluid(String),
@@ -70,6 +74,8 @@ impl Material {
     }
 }
 
+#[derive(Clone)]
+#[derive(Serialize, Deserialize)]
 pub struct ItemPrototype {
     pub name: String,
     pub stack_size: u32,
@@ -80,8 +86,8 @@ pub struct ItemPrototype {
     pub plant_result: Option<String>,
 }
 
-#[derive(Clone, PartialEq)]
-#[derive(Debug)]
+#[derive(Clone, PartialEq, Debug)]
+#[derive(Serialize, Deserialize)]
 pub struct Item {
     pub name: String,
     pub quality: Option<u8>,
@@ -93,12 +99,14 @@ pub struct Item {
     pub extra_count_fraction: Option<f32>,
 }
 
+#[derive(Clone)]
+#[derive(Serialize, Deserialize)]
 pub struct FluidPrototype {
     pub name: String,
     pub fuel_value: Option<u32>,
 }
-#[derive(Clone, PartialEq)]
-#[derive(Debug)]
+#[derive(Clone, PartialEq, Debug)]
+#[derive(Serialize, Deserialize)]
 pub struct Fluid {
     pub name: String,
     pub temperature: Option<f32>,

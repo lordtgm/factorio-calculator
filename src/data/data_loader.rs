@@ -9,12 +9,10 @@ use crate::data::Registry;
 use json::{Error, JsonValue};
 use std::collections::HashMap;
 use std::fs;
-use std::num::{ParseFloatError, ParseIntError};
-use std::rc::Rc;
 use std::string::String;
 
-pub fn load_data(dump: String) -> Result<Rc<Registry>, Error> {
-    let mut registry: Rc<Registry> = Rc::new(Registry::default());
+pub fn load_data(dump: String) -> Result<Registry, Error> {
+    let mut registry: Registry=Registry::default();
 
     let data: String = fs::read_to_string(dump).unwrap();
 
@@ -32,7 +30,7 @@ pub fn load_data(dump: String) -> Result<Rc<Registry>, Error> {
         "repair-tool",
     ] {
         for (name, value) in parsed[prototype].entries() {
-            Rc::get_mut(&mut registry).unwrap().items.insert(
+            registry.items.insert(
                 name.into(),
                 ItemPrototype {
                     name: value["name"].as_str().unwrap().into(),
@@ -48,7 +46,7 @@ pub fn load_data(dump: String) -> Result<Rc<Registry>, Error> {
     }
 
     for (name, value) in parsed["fluid"].entries() {
-        Rc::get_mut(&mut registry).unwrap().fluids.insert(
+        registry.fluids.insert(
             name.into(),
             FluidPrototype {
                 name: value["name"].as_str().unwrap().into(),
@@ -58,7 +56,7 @@ pub fn load_data(dump: String) -> Result<Rc<Registry>, Error> {
     }
 
     for (name, value) in parsed["resource"].entries() {
-        Rc::get_mut(&mut registry).unwrap().resources.insert(
+        registry.resources.insert(
             name.into(),
             ResourcePrototype {
                 name: value["name"].as_str().unwrap().into(),
@@ -71,15 +69,14 @@ pub fn load_data(dump: String) -> Result<Rc<Registry>, Error> {
             },
         );
         // let process = Process::Resource {
-        //     registry: Rc::<Registry>::downgrade(&registry),
         //     name: name.into(),
         //     productivity: 0.0,
         // };
-        // Rc::get_mut(&mut registry).unwrap().processes.push(process);
+        // registry.processes.push(process);
     }
 
     for (name, value) in parsed["plant"].entries() {
-        Rc::get_mut(&mut registry).unwrap().plants.insert(
+        registry.plants.insert(
             name.into(),
             PlantPrototype {
                 name: value["name"].as_str().unwrap().into(),
@@ -89,11 +86,10 @@ pub fn load_data(dump: String) -> Result<Rc<Registry>, Error> {
             },
         );
         // let process = Process::Plant {
-        //     registry: Rc::<Registry>::downgrade(&registry),
         //     name: name.into(),
         //     productivity: 0.0,
         // };
-        // Rc::get_mut(&mut registry).unwrap().processes.push(process);
+        // registry.processes.push(process);
     }
 
     let mut plant_seeds: HashMap<String, Vec<String>> = HashMap::new();
@@ -118,12 +114,11 @@ pub fn load_data(dump: String) -> Result<Rc<Registry>, Error> {
     }
 
     for (plant_name, seeds) in plant_seeds {
-        let plant = Rc::get_mut(&mut registry)
-            .unwrap()
+        let plant = registry
             .plants
             .remove(&plant_name)
             .unwrap();
-        Rc::get_mut(&mut registry).unwrap().plants.insert(
+        registry.plants.insert(
             plant_name.clone(),
             PlantPrototype {
                 name: plant.name,
@@ -135,7 +130,7 @@ pub fn load_data(dump: String) -> Result<Rc<Registry>, Error> {
     }
 
     for (name, value) in parsed["mining-drill"].entries() {
-        Rc::get_mut(&mut registry).unwrap().mining_drills.insert(
+        registry.mining_drills.insert(
             name.into(),
             MiningDrillPrototype {
                 name: value["name"].as_str().unwrap().into(),
@@ -167,8 +162,7 @@ pub fn load_data(dump: String) -> Result<Rc<Registry>, Error> {
     for (name, value) in parsed["assembling-machine"].entries().chain(
         parsed["furnace"].entries()
     ) {
-        Rc::get_mut(&mut registry)
-            .unwrap()
+        registry
             .crafting_machines
             .insert(
                 name.into(),
@@ -196,7 +190,7 @@ pub fn load_data(dump: String) -> Result<Rc<Registry>, Error> {
     }
 
     for (name, value) in parsed["recipe"].entries() {
-        Rc::get_mut(&mut registry).unwrap().recipes.insert(
+        registry.recipes.insert(
             name.into(),
             RecipePrototype {
                 name: value["name"].as_str().unwrap().into(),
@@ -236,15 +230,14 @@ pub fn load_data(dump: String) -> Result<Rc<Registry>, Error> {
         );
 
         // let process = Process::Recipe {
-        //     registry: Rc::<Registry>::downgrade(&registry),
         //     name: name.into(),
         //     productivity: 0.0,
         // };
-        // Rc::get_mut(&mut registry).unwrap().processes.push(process);
+        // registry.processes.push(process);
     }
 
     for (name, value) in parsed["module"].entries() {
-        Rc::get_mut(&mut registry).unwrap().modules.insert(
+        registry.modules.insert(
             name.into(),
             ModulePrototype {
                 name: value["name"].as_str().unwrap().into(),
@@ -255,7 +248,7 @@ pub fn load_data(dump: String) -> Result<Rc<Registry>, Error> {
     }
 
     for (name, value) in parsed["beacon"].entries() {
-        Rc::get_mut(&mut registry).unwrap().beacons.insert(
+        registry.beacons.insert(
             name.into(),
             BeaconPrototype {
                 name: value["name"].as_str().unwrap().into(),

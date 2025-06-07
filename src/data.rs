@@ -1,9 +1,11 @@
 use crate::data::machines::{BeaconPrototype, CraftingMachinePrototype, MiningDrillPrototype, ModulePrototype, RecipePrototype};
 use crate::data::materials::{FluidPrototype, Item, ItemPrototype, Material};
 use crate::data::resources::{PlantPrototype, ResourcePrototype};
+use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::hash::Hash;
-use std::rc::Weak;
+use std::sync::{Arc, RwLock};
+use serde::{Deserialize, Serialize};
 
 pub mod data_loader;
 pub mod effects;
@@ -12,7 +14,21 @@ pub mod materials;
 pub mod resources;
 pub mod types;
 
-#[derive(Default)]
+lazy_static! {
+    pub static ref REGISTRY: RwLock<Option<Arc<Registry>>> = RwLock::new(None);
+}
+
+pub fn get_registry() -> Arc<Registry> {
+    REGISTRY.read().unwrap().as_ref().unwrap().clone()
+}
+
+pub fn set_registry(registry: Registry) {
+    REGISTRY.write().unwrap().replace(Arc::new(registry));
+}
+
+
+#[derive(Default, Clone)]
+#[derive(Serialize, Deserialize)]
 pub struct Registry {
     pub items: HashMap<String, ItemPrototype>,
     pub fluids: HashMap<String, FluidPrototype>,
@@ -27,6 +43,7 @@ pub struct Registry {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize)]
 pub enum ProcessType {
     Resource,
     Plant,
@@ -57,9 +74,9 @@ impl TryFrom<&String> for ProcessType {
 }
 
 #[derive(Clone, Debug)]
+#[derive(Serialize, Deserialize)]
 pub struct Process {
     pub process_type: ProcessType,
-    pub registry: Weak<Registry>,
     pub name: String,
     pub productivity: f32,
 }
@@ -81,10 +98,7 @@ impl Eq for Process {}
 impl Process {
     pub fn get_ingredients(&self) -> Vec<Material> {
         match self.process_type {
-            ProcessType::Resource => self
-                .registry
-                .upgrade()
-                .unwrap()
+            ProcessType::Resource => get_registry()
                 .resources
                 .get(&self.name)
                 .unwrap()
@@ -93,10 +107,7 @@ impl Process {
                 .clone()
                 .map(|fluid| vec![Material::Fluid(fluid)])
                 .unwrap_or_else(|| vec![]),
-            ProcessType::Plant => self
-                .registry
-                .upgrade()
-                .unwrap()
+            ProcessType::Plant => get_registry()
                 .plants
                 .get(&self.name)
                 .unwrap()
@@ -115,10 +126,7 @@ impl Process {
                     })
                 })
                 .collect(),
-            ProcessType::Recipe => self
-                .registry
-                .upgrade()
-                .unwrap()
+            ProcessType::Recipe => get_registry()
                 .recipes
                 .get(&self.name)
                 .unwrap()
@@ -129,30 +137,21 @@ impl Process {
 
     pub fn get_products(&self) -> Vec<Material> {
         match self.process_type {
-            ProcessType::Resource => self
-                .registry
-                .upgrade()
-                .unwrap()
+            ProcessType::Resource => get_registry()
                 .resources
                 .get(&self.name)
                 .unwrap()
                 .results
                 .results
                 .clone(),
-            ProcessType::Plant => self
-                .registry
-                .upgrade()
-                .unwrap()
+            ProcessType::Plant => get_registry()
                 .plants
                 .get(&self.name)
                 .unwrap()
                 .results
                 .results
                 .clone(),
-            ProcessType::Recipe => self
-                .registry
-                .upgrade()
-                .unwrap()
+            ProcessType::Recipe => get_registry()
                 .recipes
                 .get(&self.name)
                 .unwrap()
