@@ -5,16 +5,33 @@ on:
     tags:
       - 'v*'  # Trigger on tags like v1.0.0
 
+permissions:
+  contents: write
+
 jobs:
   build:
-    runs-on: ubuntu-latest
     strategy:
       matrix:
-        target: [x86_64-unknown-linux-gnu, x86_64-pc-windows-msvc, x86_64-apple-darwin]
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            ext: ""
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            ext: ".exe"
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            ext: ""
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
-      # Install latest nightly Rust
+      # For Windows targets: Install Visual Studio Build Tools
+      - name: Install MSVC Tools (Windows only)
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      # Install nightly Rust for the target
       - name: Install Rust (nightly)
         uses: dtolnay/rust-toolchain@master
         with:
@@ -26,20 +43,32 @@ jobs:
         env:
           CARGO_TERM_COLOR: always
 
-      - name: Archive Binary
+      - name: Get Binary Name
+        id: bin_name
         shell: bash
         run: |
-          BIN_NAME=your_binary_name  # Replace with your binary name
-          if [[ "${{ matrix.target }}" == *"windows"* ]]; then
-            EXT=".exe"
-            ARCHIVE="$BIN_NAME-${{ matrix.target }}.zip"
-            zip -j $ARCHIVE target/${{ matrix.target }}/release/$BIN_NAME$EXT
-          else
-            EXT=""
-            ARCHIVE="$BIN_NAME-${{ matrix.target }}.tar.gz"
-            tar czf $ARCHIVE -C target/${{ matrix.target }}/release $BIN_NAME
+          # Extract package name from Cargo.toml
+          BIN_NAME=$(awk -F'"' '/^\[package\]/ { in_package=1 } in_package && /^name = / { print $2; exit }' Cargo.toml)
+          if [ -z "$BIN_NAME" ]; then
+            echo "Could not determine binary name from Cargo.toml"
+            exit 1
           fi
-          echo "ASSET_PATH=$ARCHIVE" >> $GITHUB_ENV
+          echo "BIN_NAME=$BIN_NAME" >> $GITHUB_ENV
+          echo "binary_name=$BIN_NAME" >> $GITHUB_OUTPUT
+
+      - name: Prepare Artifact
+        shell: bash
+        run: |
+          OUTPUT_BINARY="${{ env.BIN_NAME }}-${{ matrix.target }}${{ matrix.ext }}"
+          
+          # Windows needs special handling for executable paths
+          if [[ "${{ matrix.target }}" == *"windows"* ]]; then
+            cp target/${{ matrix.target }}/release/${{ env.BIN_NAME }}.exe $OUTPUT_BINARY
+          else
+            cp target/${{ matrix.target }}/release/${{ env.BIN_NAME }} $OUTPUT_BINARY
+          fi
+          
+          echo "ASSET_PATH=$OUTPUT_BINARY" >> $GITHUB_ENV
 
       - uses: actions/upload-artifact@v4
         with:
@@ -55,15 +84,22 @@ jobs:
         with:
           path: artifacts
 
+      # Generate dynamic release notes
+      - name: Generate Release Body
+        shell: bash
+        run: |
+          cat << EOF > release_body.md
+          Automated nightly release
+          Toolchain: $(rustc -V)
+          Build date: $(date -u +'%Y-%m-%dT%H:%M:%SZ')
+          EOF
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: "Nightly Build: ${{ github.ref_name }}"
-          body: |
-            Automated nightly release
-            Toolchain: $(rustc -V)
-            Build date: $(date -u +'%Y-%m-%dT%H:%M:%SZ')
+          name: ${{ github.ref_name }}  # Fixed: Uses tag name directly
+          body_file: release_body.md    # Fixed: Uses generated file
           files: |
             artifacts/**/*
         env:
