@@ -298,7 +298,7 @@ pub fn load_data(dump: String) -> Result<Registry, Error> {
                 efficiency: value["distribution_effectivity"].as_f64().unwrap(),
                 efficiency_per_quality: value["distribution_effectivity_bonus_per_quality_level"]
                     .as_f64()
-                    .unwrap(),
+                    .unwrap_or(0.0),
                 module_slots: value["module_slots"].as_u16().unwrap(),
                 allowed_effects: value["allowed_effects"]
                     .members()
