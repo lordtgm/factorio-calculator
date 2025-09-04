@@ -3,7 +3,6 @@
 #![feature(tuple_trait)]
 #![feature(if_let_guard)]
 #![feature(try_blocks)]
-#![feature(let_chains)]
 
 mod data;
 mod model;

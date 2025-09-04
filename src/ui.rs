@@ -631,7 +631,7 @@ impl App {
                             }
                             ProcessType::Plant => panic!(),
                             ProcessType::Recipe => {
-                                let ProcessData::Recipe {
+                                let &mut ProcessData::Recipe {
                                     ref crafting_machine,
                                     modules: _,
                                     beacons: _,
@@ -1402,7 +1402,7 @@ impl App {
                             query.push(c);
                         }
                         KeyCode::Char(c) if c.is_ascii_digit() || c == '.' => {
-                            if let Some((_context, ref mut input)) = self.number_input.as_mut() {
+                            if let Some((_context, input)) = self.number_input.as_mut() {
                                 input.push(c);
                             }
                         }
@@ -1410,7 +1410,7 @@ impl App {
                             self.save_project(false);
                         }
                         KeyCode::Backspace => {
-                            if let Some((_context, ref mut input)) = self.number_input.as_mut() {
+                            if let Some((_context, input)) = self.number_input.as_mut() {
                                 input.pop();
                             }
                             if let Some(query) = self.search_query.as_mut() {
@@ -1513,7 +1513,7 @@ impl App {
                     if length == 0 {
                         length = 1;
                     }
-                    let (_, ref mut pos) = self.menu_stack.last_mut().unwrap();
+                    let (_, pos) = self.menu_stack.last_mut().unwrap();
                     if *pos >= length {
                         *pos = length - 1
                     }

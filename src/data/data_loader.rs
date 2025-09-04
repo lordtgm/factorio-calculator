@@ -373,9 +373,9 @@ fn get_energy_source(value: &JsonValue) -> EnergySource {
         },
         "heat" => EnergySource::Heat,
         "fluid" => EnergySource::Fluid {
-            effectivity: value["effectivity"].as_f64().unwrap(),
+            effectivity: value["effectivity"].as_f64().unwrap_or(1.0),
             burns_fluid: value["burns_fluid"].as_bool().unwrap(),
-            fluid_usage_per_tick: value["fluid_usage_per_tick"].as_u32().unwrap(),
+            fluid_usage_per_tick: value["fluid_usage_per_tick"].as_u32().unwrap_or(0),
             scale_fluid_usage: value["scale_fluid_usage"].as_bool().unwrap(),
         },
         "void" => EnergySource::Void,
